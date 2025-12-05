@@ -7,6 +7,7 @@ An ultra-low-latency agentic basis trading bot for Solana that monitors funding 
 - **Real-time Price Feeds**: Pyth oracle + Jupiter aggregator for spot, Drift Protocol for perps
 - **Basis Spread Calculation**: Continuous monitoring of spot vs perp price differential
 - **Funding Rate Analysis**: 8-hour rolling windows with annualized APR calculation
+- **Signal Generation**: Automated trade signals based on basis + funding conditions
 - **Delta-Neutral Hedging**: Automatic position sizing for market-neutral exposure
 - **MEV Protection**: Jito bundle integration for atomic execution
 - **Low Latency**: Lock-free data structures, QUIC transport, optimized hot paths
@@ -19,7 +20,7 @@ An ultra-low-latency agentic basis trading bot for Solana that monitors funding 
 |-------|-------------|--------|
 | 1 | Foundation (config, state, logging, types) | ✅ Complete |
 | 2 | Network Layer (RPC, WebSocket, price feeds) | ✅ Complete |
-| 3 | Calculation Engines (funding, basis, signals) | ⏳ Pending |
+| 3 | Calculation Engines (funding, basis, signals) | ✅ Complete |
 | 4 | Execution (transactions, Jito, protocols) | ⏳ Pending |
 | 5 | Agent (state machine, risk, rebalancing) | ⏳ Pending |
 | 6 | Production (testing, paper trading, docs) | ⏳ Pending |
@@ -44,25 +45,50 @@ cargo run --release -- --config config.yaml --paper
 cargo run --release -- --config config.yaml --devnet
 ```
 
-## Current Functionality (Phase 2)
+## Current Functionality (Phase 3)
 
 The bot now:
 - Connects to Solana RPC with automatic failover
 - Fetches SOL/USD prices from Pyth Network oracle
 - Fetches spot prices from Jupiter aggregator
 - Fetches SOL-PERP mark/index prices and funding rates from Drift
-- Calculates real-time basis spread (perp vs spot)
-- Computes annualized funding APR
-- Broadcasts events through internal event bus
-- Logs status updates every 10 seconds
+- **Funding Engine**: Tracks 8-hour funding history, calculates velocity and volatility
+- **Basis Engine**: Computes spread percentiles, z-scores, and hedge ratios
+- **Signal Engine**: Generates trade signals based on configurable thresholds
+- Logs status updates and trade signals in real-time
 
 Example output:
 ```
 INFO  Starting SOL Basis Trading Bot v0.1.0
 INFO  RPC health check passed (latency: 245ms)
 INFO  Price feeds started
+INFO  Calculation engines started
 INFO  Status | Spot: $148.52 | Perp: $148.89 | Basis: 0.2491% | Funding APR: 18.42%
+INFO  Signal generated: OpenBasis | Size: 85.20 SOL | Confidence: 80.0% | Reason: Basis 0.25% >= 0.10%; Funding APR 18.4% >= 15.0%; Basis and funding aligned
 ```
+
+## Calculation Engines
+
+### Funding Engine
+- Tracks rolling 8-hour window of funding rate snapshots
+- Calculates annualized APR: `rate × 24 × 365 × 100`
+- Computes funding velocity (rate of change per hour)
+- Detects elevated funding and reversal signals
+- Predicts next funding payment
+
+### Basis Engine
+- Real-time spread calculation: `(perp - spot) / spot × 100`
+- Historical percentile ranking
+- Z-score computation for mean reversion
+- Optimal hedge ratio calculation
+- Hedge drift detection
+
+### Signal Engine
+- Evaluates open/close/rebalance conditions every 5 seconds
+- Combines funding and basis signals
+- Risk-adjusted position sizing
+- Confidence scoring (0-100%)
+- Expected profit estimation
 
 ## Configuration
 
@@ -75,35 +101,44 @@ Edit `config.yaml` to configure:
 - Telemetry (logging, metrics, alerts)
 - Protocol addresses (Drift, Pyth, Jupiter)
 
+### Key Trading Parameters
+
+```yaml
+trading:
+  min_basis_spread_pct: 0.10     # Minimum 0.1% basis to open
+  min_funding_apr_pct: 15.0      # Minimum 15% annualized funding
+  max_leverage: 3.0              # Maximum 3x leverage
+  max_position_size_sol: 1000.0  # Max 1000 SOL per leg
+  basis_close_threshold_pct: 0.05 # Close when basis < 0.05%
+
+risk:
+  max_drawdown_pct: 5.0          # Pause at 5% drawdown
+  hedge_drift_threshold_pct: 2.0 # Rebalance at 2% drift
+```
+
 ## Architecture
 
 ```
 src/
 ├── main.rs              # Entry point + event loop
 ├── config/              # Configuration parsing
-│   └── mod.rs
 ├── state/               # Thread-safe shared state
-│   └── mod.rs
 ├── telemetry/           # Observability
-│   ├── mod.rs
 │   ├── logging.rs
 │   ├── metrics.rs
 │   └── alerts.rs
-├── utils/               # Common types + helpers
-│   ├── mod.rs
-│   ├── types.rs
-│   └── helpers.rs
 ├── network/             # Network layer
-│   ├── mod.rs
 │   ├── rpc_client.rs    # Solana RPC with failover
 │   ├── websocket.rs     # WebSocket management
 │   └── event_bus.rs     # Internal pub/sub
 ├── feeds/               # Price feeds
-│   ├── mod.rs
 │   ├── pyth.rs          # Pyth oracle
 │   ├── jupiter.rs       # Jupiter aggregator
 │   └── drift.rs         # Drift Protocol
-├── engines/             # Calculation engines (Phase 3)
+├── engines/             # Calculation engines
+│   ├── funding_engine.rs # Funding rate analysis
+│   ├── basis_engine.rs   # Basis spread + hedge
+│   └── signal_engine.rs  # Trade signal generation
 ├── execution/           # Transaction handling (Phase 4)
 ├── agent/               # Agentic logic (Phase 5)
 ├── position/            # Position tracking (Phase 5)
