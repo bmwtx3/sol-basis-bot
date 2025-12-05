@@ -21,7 +21,7 @@ An ultra-low-latency agentic basis trading bot for Solana that monitors funding 
 | 1 | Foundation (config, state, logging, types) | ✅ Complete |
 | 2 | Network Layer (RPC, WebSocket, price feeds) | ✅ Complete |
 | 3 | Calculation Engines (funding, basis, signals) | ✅ Complete |
-| 4 | Execution (transactions, Jito, protocols) | ⏳ Pending |
+| 4 | Execution (transactions, Jito, protocols) | ✅ Complete |
 | 5 | Agent (state machine, risk, rebalancing) | ⏳ Pending |
 | 6 | Production (testing, paper trading, docs) | ⏳ Pending |
 
@@ -45,26 +45,35 @@ cargo run --release -- --config config.yaml --paper
 cargo run --release -- --config config.yaml --devnet
 ```
 
-## Current Functionality (Phase 3)
+## Current Functionality (Phase 4)
 
-The bot now:
-- Connects to Solana RPC with automatic failover
-- Fetches SOL/USD prices from Pyth Network oracle
-- Fetches spot prices from Jupiter aggregator
-- Fetches SOL-PERP mark/index prices and funding rates from Drift
-- **Funding Engine**: Tracks 8-hour funding history, calculates velocity and volatility
-- **Basis Engine**: Computes spread percentiles, z-scores, and hedge ratios
-- **Signal Engine**: Generates trade signals based on configurable thresholds
-- Logs status updates and trade signals in real-time
+The bot now has full execution infrastructure:
+- **Transaction Builder**: Constructs Drift perp orders and Jupiter swap transactions
+- **Jupiter Client**: Fetches quotes and builds swap transactions with slippage protection
+- **Jito Client**: Submits bundles for MEV protection with tip rotation
+- **Transaction Simulator**: Pre-flight validation and compute unit estimation
+- **Transaction Submitter**: Retry logic with exponential backoff and confirmation waiting
 
-Example output:
+### Execution Flow
+
+1. Signal Engine generates trade signal (OpenBasis, CloseBasis, Rebalance)
+2. Transaction Builder constructs atomic bundle:
+   - Priority fee instruction
+   - Jupiter swap (SOL ↔ USDC)
+   - Drift perp order (long/short)
+   - Jito tip (if using bundles)
+3. Simulator validates transaction before submission
+4. Submitter handles retry logic and confirmation
+
+Example execution output:
 ```
-INFO  Starting SOL Basis Trading Bot v0.1.0
-INFO  RPC health check passed (latency: 245ms)
-INFO  Price feeds started
-INFO  Calculation engines started
-INFO  Status | Spot: $148.52 | Perp: $148.89 | Basis: 0.2491% | Funding APR: 18.42%
-INFO  Signal generated: OpenBasis | Size: 85.20 SOL | Confidence: 80.0% | Reason: Basis 0.25% >= 0.10%; Funding APR 18.4% >= 15.0%; Basis and funding aligned
+INFO  Signal generated: OpenBasis | Size: 85.20 SOL | Confidence: 80.0%
+INFO  Jupiter quote: 85200000000 -> 12780000000, price_impact: 0.01%
+INFO  Built basis trade: spot=85.20 SOL, perp=85200000 (Short), priority_fee=1000
+INFO  Simulation successful: 285000 compute units
+INFO  Jito bundle submitted: abc123...
+INFO  Bundle abc123... landed successfully
+INFO  Transaction confirmed in slot 245678901 (1250 ms)
 ```
 
 ## Calculation Engines
@@ -90,6 +99,32 @@ INFO  Signal generated: OpenBasis | Size: 85.20 SOL | Confidence: 80.0% | Reason
 - Confidence scoring (0-100%)
 - Expected profit estimation
 
+## Execution Layer
+
+### Transaction Builder
+- Constructs Drift Protocol perp orders
+- Builds atomic basis trade bundles (spot + perp)
+- Dynamic priority fee calculation
+- Compute budget optimization
+
+### Jupiter Client
+- Quote fetching with route optimization
+- SOL ↔ USDC swap execution
+- Slippage management
+- Price impact calculation
+
+### Jito Client
+- Bundle submission for MEV protection
+- Tip account rotation
+- Bundle status tracking
+- Automatic retry on failure
+
+### Transaction Submitter
+- Exponential backoff retry logic
+- Confirmation waiting with timeout
+- Error classification (retryable vs fatal)
+- Batch submission support
+
 ## Configuration
 
 Edit `config.yaml` to configure:
@@ -114,6 +149,12 @@ trading:
 risk:
   max_drawdown_pct: 5.0          # Pause at 5% drawdown
   hedge_drift_threshold_pct: 2.0 # Rebalance at 2% drift
+
+execution:
+  use_jito: true                 # Enable Jito bundles
+  jito_tip_lamports: 10000       # 0.00001 SOL tip
+  max_retries: 3                 # Retry attempts
+  simulate_before_submit: true   # Pre-flight simulation
 ```
 
 ## Architecture
@@ -139,17 +180,22 @@ src/
 │   ├── funding_engine.rs # Funding rate analysis
 │   ├── basis_engine.rs   # Basis spread + hedge
 │   └── signal_engine.rs  # Trade signal generation
-├── execution/           # Transaction handling (Phase 4)
+├── execution/           # Transaction handling
+│   ├── tx_builder.rs    # Transaction construction
+│   ├── jupiter.rs       # Jupiter swap client
+│   ├── jito.rs          # Jito bundle client
+│   ├── simulator.rs     # Pre-flight simulation
+│   └── submitter.rs     # Retry + confirmation
 ├── agent/               # Agentic logic (Phase 5)
 ├── position/            # Position tracking (Phase 5)
-└── protocols/           # Protocol SDKs (Phase 4)
+└── protocols/           # Protocol SDKs
 ```
 
 ## Requirements
 
 - Rust 1.75+
 - Solana RPC access (dedicated/private recommended for low latency)
-- Wallet with SOL for trading (Phase 4+)
+- Wallet with SOL for trading
 
 ## Metrics
 
@@ -161,6 +207,8 @@ When metrics are enabled, Prometheus metrics are exposed on the configured port 
 - `sol_basis_bot_funding_apr` - Annualized funding APR
 - `sol_basis_bot_trades_total` - Total trades executed
 - `sol_basis_bot_execution_latency_ms` - Trade execution latency
+- `sol_basis_bot_jito_bundles_submitted` - Jito bundles submitted
+- `sol_basis_bot_jito_bundles_landed` - Jito bundles landed
 
 ## License
 
