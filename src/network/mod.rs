@@ -1,8 +1,11 @@
 //! Network module - Phase 2
 //!
-//! This module will contain:
-//! - RPC client with QUIC support
-//! - WebSocket connection management
-//! - Event bus for internal broadcasting
+//! Provides RPC client, WebSocket management, and event bus for price feeds.
 
-// TODO: Phase 2 implementation
+pub mod rpc_client;
+pub mod websocket;
+pub mod event_bus;
+
+pub use rpc_client::RpcManager;
+pub use websocket::WebSocketManager;
+pub use event_bus::{EventBus, Event};
