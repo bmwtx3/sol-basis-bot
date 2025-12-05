@@ -31,6 +31,8 @@ use telemetry::{init_logging, init_metrics};
 use network::{RpcManager, EventBus, Event};
 use feeds::PriceFeedManager;
 use engines::EngineManager;
+use position::PositionManager;
+use agent::TradingAgent;
 
 /// SOL Basis Trading Bot - Ultra-low-latency agentic trading
 #[derive(Parser, Debug)]
@@ -139,8 +141,25 @@ async fn main() -> Result<()> {
     engine_manager.start().await?;
     info!("Calculation engines started");
     
+    // Phase 5: Initialize position manager and trading agent
+    info!("Initializing position manager...");
+    let position_manager = Arc::new(PositionManager::new(state.clone()));
+    
+    info!("Initializing trading agent...");
+    let trading_agent = TradingAgent::new(
+        config.clone(),
+        state.clone(),
+        position_manager.clone(),
+        event_tx.clone(),
+    );
+    
+    // Start trading agent
+    trading_agent.start().await?;
+    info!("Trading agent started");
+    
     // Spawn event processor to update shared state
     let state_clone = state.clone();
+    let position_manager_clone = position_manager.clone();
     let mut event_rx = event_bus.subscribe();
     let event_processor = tokio::spawn(async move {
         info!("Event processor started");
@@ -155,6 +174,8 @@ async fn main() -> Result<()> {
                         Event::PerpMarkPriceUpdate(update) => {
                             state_clone.update_perp_mark_price(update.price);
                             debug!("Perp mark price updated: ${:.4}", update.price);
+                            // Update position P&L
+                            position_manager_clone.update_pnl().await;
                         }
                         Event::PerpIndexPriceUpdate(update) => {
                             state_clone.perp_index_price.store(update.price);
@@ -175,6 +196,24 @@ async fn main() -> Result<()> {
                                 "Trade signal: {} | Size: {:.2} SOL | Reason: {}",
                                 signal_type, size, reason
                             );
+                        }
+                        Event::PositionOpened { size, entry_price, side } => {
+                            info!(
+                                "Position opened: {:.4} SOL @ ${:.2} ({})",
+                                size, entry_price, side
+                            );
+                        }
+                        Event::PositionClosed { size, exit_price, pnl } => {
+                            info!(
+                                "Position closed: {:.4} SOL @ ${:.2}, P&L: ${:.2}",
+                                size, exit_price, pnl
+                            );
+                        }
+                        Event::SystemPause { reason } => {
+                            warn!("System paused: {}", reason);
+                        }
+                        Event::SystemResume => {
+                            info!("System resumed");
                         }
                         Event::WebSocketConnected => {
                             *state_clone.ws_connected.write() = true;
@@ -206,6 +245,8 @@ async fn main() -> Result<()> {
     
     // Spawn status reporter
     let state_clone = state.clone();
+    let agent_for_status = trading_agent.current_state();
+    let position_manager_for_status = position_manager.clone();
     let status_reporter = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
         loop {
@@ -215,21 +256,29 @@ async fn main() -> Result<()> {
             let perp = state_clone.perp_mark_price.load();
             let basis = state_clone.get_basis_spread();
             let funding_apr = state_clone.funding_apr.load();
+            let positions = position_manager_for_status.get_positions().await;
             
             if spot > 0.0 && perp > 0.0 {
-                info!(
-                    "Status | Spot: ${:.2} | Perp: ${:.2} | Basis: {:.4}% | Funding APR: {:.2}%",
-                    spot, perp, basis, funding_apr
-                );
+                if positions.spot_size > 0.0 {
+                    info!(
+                        "Status | Spot: ${:.2} | Perp: ${:.2} | Basis: {:.4}% | APR: {:.2}% | Pos: {:.2} SOL | uPnL: ${:.2}",
+                        spot, perp, basis, funding_apr, positions.spot_size, positions.unrealized_pnl
+                    );
+                } else {
+                    info!(
+                        "Status | Spot: ${:.2} | Perp: ${:.2} | Basis: {:.4}% | Funding APR: {:.2}%",
+                        spot, perp, basis, funding_apr
+                    );
+                }
             }
         }
     });
 
-    info!("Bot initialization complete");
-    info!("Monitoring prices, analyzing funding rates, and generating signals...");
-    
-    // TODO: Phase 4 - Initialize execution engine
-    // TODO: Phase 5 - Initialize agent
+    info!("===========================================");
+    info!("  SOL Basis Trading Bot - FULLY OPERATIONAL");
+    info!("===========================================");
+    info!("Monitoring prices, analyzing funding rates,");
+    info!("generating signals, and executing trades...");
     
     // Wait for shutdown signal
     match signal::ctrl_c().await {
@@ -242,6 +291,9 @@ async fn main() -> Result<()> {
     }
     
     // Cleanup
+    info!("Stopping trading agent...");
+    trading_agent.stop().await;
+    
     info!("Stopping engines...");
     engine_manager.stop().await;
     
@@ -250,6 +302,14 @@ async fn main() -> Result<()> {
     
     event_processor.abort();
     status_reporter.abort();
+
+    // Final P&L report
+    let final_pnl = position_manager.get_realized_pnl().await;
+    let trade_count = position_manager.get_trade_count().await;
+    info!("===========================================");
+    info!("  Session Summary");
+    info!("  Trades: {} | Realized P&L: ${:.2}", trade_count, final_pnl);
+    info!("===========================================");
 
     info!("SOL Basis Trading Bot stopped");
     Ok(())
