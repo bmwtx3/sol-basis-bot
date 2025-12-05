@@ -18,7 +18,7 @@ An ultra-low-latency agentic basis trading bot for Solana that monitors funding 
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Foundation (config, state, logging, types) | ✅ Complete |
-| 2 | Network Layer (RPC, WebSocket, price feeds) | 🔄 In Progress |
+| 2 | Network Layer (RPC, WebSocket, price feeds) | ✅ Complete |
 | 3 | Calculation Engines (funding, basis, signals) | ⏳ Pending |
 | 4 | Execution (transactions, Jito, protocols) | ⏳ Pending |
 | 5 | Agent (state machine, risk, rebalancing) | ⏳ Pending |
@@ -44,6 +44,26 @@ cargo run --release -- --config config.yaml --paper
 cargo run --release -- --config config.yaml --devnet
 ```
 
+## Current Functionality (Phase 2)
+
+The bot now:
+- Connects to Solana RPC with automatic failover
+- Fetches SOL/USD prices from Pyth Network oracle
+- Fetches spot prices from Jupiter aggregator
+- Fetches SOL-PERP mark/index prices and funding rates from Drift
+- Calculates real-time basis spread (perp vs spot)
+- Computes annualized funding APR
+- Broadcasts events through internal event bus
+- Logs status updates every 10 seconds
+
+Example output:
+```
+INFO  Starting SOL Basis Trading Bot v0.1.0
+INFO  RPC health check passed (latency: 245ms)
+INFO  Price feeds started
+INFO  Status | Spot: $148.52 | Perp: $148.89 | Basis: 0.2491% | Funding APR: 18.42%
+```
+
 ## Configuration
 
 Edit `config.yaml` to configure:
@@ -59,25 +79,53 @@ Edit `config.yaml` to configure:
 
 ```
 src/
-├── main.rs              # Entry point
+├── main.rs              # Entry point + event loop
 ├── config/              # Configuration parsing
-├── state/               # Shared state store (lock-free)
-├── telemetry/           # Logging, metrics, alerts
-├── utils/               # Types and helpers
-├── network/             # RPC + WebSocket clients
-├── feeds/               # Price feed processors
-├── engines/             # Calculation engines
-├── execution/           # Transaction handling
-├── agent/               # State machine + risk
-├── position/            # Position tracking
-└── protocols/           # Protocol integrations
+│   └── mod.rs
+├── state/               # Thread-safe shared state
+│   └── mod.rs
+├── telemetry/           # Observability
+│   ├── mod.rs
+│   ├── logging.rs
+│   ├── metrics.rs
+│   └── alerts.rs
+├── utils/               # Common types + helpers
+│   ├── mod.rs
+│   ├── types.rs
+│   └── helpers.rs
+├── network/             # Network layer
+│   ├── mod.rs
+│   ├── rpc_client.rs    # Solana RPC with failover
+│   ├── websocket.rs     # WebSocket management
+│   └── event_bus.rs     # Internal pub/sub
+├── feeds/               # Price feeds
+│   ├── mod.rs
+│   ├── pyth.rs          # Pyth oracle
+│   ├── jupiter.rs       # Jupiter aggregator
+│   └── drift.rs         # Drift Protocol
+├── engines/             # Calculation engines (Phase 3)
+├── execution/           # Transaction handling (Phase 4)
+├── agent/               # Agentic logic (Phase 5)
+├── position/            # Position tracking (Phase 5)
+└── protocols/           # Protocol SDKs (Phase 4)
 ```
 
 ## Requirements
 
 - Rust 1.75+
-- Solana RPC access (dedicated/private recommended)
-- Wallet with SOL for trading
+- Solana RPC access (dedicated/private recommended for low latency)
+- Wallet with SOL for trading (Phase 4+)
+
+## Metrics
+
+When metrics are enabled, Prometheus metrics are exposed on the configured port (default: 9090):
+
+- `sol_basis_bot_spot_price` - Current SOL spot price
+- `sol_basis_bot_perp_mark_price` - Current perp mark price
+- `sol_basis_bot_basis_spread` - Basis spread percentage
+- `sol_basis_bot_funding_apr` - Annualized funding APR
+- `sol_basis_bot_trades_total` - Total trades executed
+- `sol_basis_bot_execution_latency_ms` - Trade execution latency
 
 ## License
 
