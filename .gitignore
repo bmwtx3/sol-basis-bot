@@ -1,0 +1,41 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Secrets
+wallet.json
+*.pem
+*.key
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+*.so
+*.dylib
+*.dll
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Coverage
+target/coverage/
+target/llvm-cov/
