@@ -60,6 +60,87 @@ impl AppConfig {
         );
         Ok(())
     }
+    
+    /// Create a default config for testing
+    #[cfg(test)]
+    pub fn default_for_test() -> Self {
+        Self {
+            rpc: RpcConfig {
+                primary_url: "https://api.mainnet-beta.solana.com".to_string(),
+                fallback_urls: vec![],
+                ws_url: "wss://api.mainnet-beta.solana.com".to_string(),
+                connection_timeout_ms: 5000,
+                request_timeout_ms: 10000,
+                max_retries: 3,
+                requests_per_second: 50,
+            },
+            wallet: WalletConfig {
+                keypair_path: "./wallet.json".to_string(),
+            },
+            trading: TradingConfig {
+                min_basis_spread_pct: 0.1,
+                min_funding_apr_pct: 15.0,
+                max_leverage: 3.0,
+                max_position_size_sol: 1000.0,
+                max_total_exposure_usd: 100000.0,
+                slippage_tolerance_pct: 0.5,
+                basis_close_threshold_pct: 0.05,
+                max_hold_time_hours: 168,
+            },
+            risk: RiskConfig {
+                max_drawdown_pct: 5.0,
+                stop_loss_pct: 2.0,
+                hedge_drift_threshold_pct: 2.0,
+                max_funding_reversal_loss: 500.0,
+                max_open_positions: 5,
+                min_trade_interval_secs: 60,
+            },
+            rebalance: RebalanceConfig {
+                check_interval_secs: 60,
+                min_rebalance_size_sol: 10.0,
+                max_rebalances_per_hour: 10,
+            },
+            execution: ExecutionConfig {
+                use_jito: true,
+                jito_tip_lamports: 10000,
+                jito_block_engine_url: "https://mainnet.block-engine.jito.wtf".to_string(),
+                max_retries: 3,
+                retry_delay_ms: 100,
+                simulate_before_submit: true,
+                priority_fee: PriorityFeeConfig {
+                    strategy: "dynamic".to_string(),
+                    fixed_fee: 1000,
+                    max_fee: 100000,
+                },
+            },
+            telemetry: TelemetryConfig {
+                log_level: "info".to_string(),
+                json_logs: false,
+                log_file: None,
+                metrics_port: 9090,
+                enable_metrics: true,
+                enable_alerts: false,
+                alert_webhook: None,
+                telegram: TelegramConfig::default(),
+            },
+            protocols: ProtocolsConfig {
+                drift: DriftConfig {
+                    program_id: "dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH".to_string(),
+                    market_index: 0,
+                },
+                pyth: PythConfig {
+                    sol_usd_feed: "H6ARHf6YXhGYeQfUzQNGk6rDNnLBQKrenN712K4AQJEG".to_string(),
+                },
+                jupiter: JupiterConfig {
+                    api_url: "https://quote-api.jup.ag/v6".to_string(),
+                    sol_mint: "So11111111111111111111111111111111111111112".to_string(),
+                    usdc_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
+                },
+            },
+            paper_trading: true,
+            devnet: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
