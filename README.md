@@ -1,6 +1,42 @@
 # SOL Basis Trading Bot
 
-An ultra-low-latency agentic basis trading bot for Solana that monitors funding rates for SOL perpetual futures, calculates basis spreads between spot and perp markets, and executes delta-neutral hedged positions with automated rebalancing.
+An ultra-low-latency **agentic** basis trading bot for Solana that monitors funding rates for SOL perpetual futures, calculates basis spreads between spot and perp markets, and executes delta-neutral hedged positions with automated rebalancing.
+
+## 🤖 Agentic Features (NEW!)
+
+The bot includes **self-learning capabilities** that adapt to market conditions:
+
+### 1. Performance Database
+- Stores all trade outcomes persistently
+- Calculates win rate, Sharpe ratio, profit factor
+- Tracks performance by market conditions
+- Export to CSV for analysis
+
+### 2. Adaptive Position Sizing (Kelly Criterion)
+- Automatically adjusts position size based on historical performance
+- Uses Kelly criterion with safety adjustments
+- Scales down during losing streaks and drawdowns
+- Scales up during winning streaks (conservatively)
+
+### 3. Funding Reversal Detection
+- Early warning system for funding rate reversals
+- Velocity and acceleration analysis
+- Severity classification (Low → Critical)
+- Auto-close on critical reversals
+
+```
+┌─────────────────────────────────────────────────────┐
+│              AGENTIC: Self-Learning                 │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│   Performance Data     Learning Engine    Adaptation│
+│   ────────────────     ──────────────     ──────────│
+│   Win rate: 65%   ──►  Kelly: 18%    ──►  Size: 180 │
+│   Losing streak   ──►  Adjustment: 70%──►  Size: 126│
+│   Funding reversal──►  Severity: HIGH ──►  ALERT!   │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
 
 ## Features
 
@@ -12,7 +48,7 @@ An ultra-low-latency agentic basis trading bot for Solana that monitors funding 
 - **MEV Protection**: Jito bundle integration for atomic execution
 - **Low Latency**: Lock-free data structures, optimized hot paths
 - **Risk Management**: Stop-loss, max drawdown, position limits, circuit breakers
-- **Agentic Execution**: State machine for trade lifecycle management
+- **Agentic Execution**: State machine + self-learning for trade lifecycle
 - **Paper Trading**: Full simulation mode for testing
 - **Observability**: Prometheus metrics, structured logging, alerting
 
@@ -26,8 +62,9 @@ An ultra-low-latency agentic basis trading bot for Solana that monitors funding 
 | 4 | Execution (transactions, Jito, protocols) | ✅ Complete |
 | 5 | Agent (state machine, risk, rebalancing) | ✅ Complete |
 | 6 | Production (testing, optimization, docs) | ✅ Complete |
+| 7 | **Agentic Features** (learning, adaptation) | ✅ Complete |
 
-**🎉 PROJECT COMPLETE - Ready for production use!**
+**🎉 PROJECT COMPLETE - Production ready with self-learning!**
 
 ## Quick Start
 
@@ -65,6 +102,7 @@ docker build -t sol-basis-bot .
 docker run -d --name sol-basis-bot \
   -v /path/to/keypair.json:/keys/keypair.json:ro \
   -v /path/to/config.yaml:/app/config.yaml:ro \
+  -v /path/to/data:/app/data \
   -e SOLANA_KEYPAIR_PATH=/keys/keypair.json \
   -p 9090:9090 \
   sol-basis-bot
@@ -75,6 +113,7 @@ docker run -d --name sol-basis-bot \
 - [Trading Strategy Guide](docs/STRATEGY.md) - Understanding basis trading
 - [Architecture Overview](docs/ARCHITECTURE.md) - Technical design
 - [Deployment Guide](docs/DEPLOYMENT.md) - Production setup
+- [Production Setup](docs/PRODUCTION_SETUP.md) - VPS, RPC, risk settings
 
 ## Architecture
 
@@ -89,8 +128,12 @@ src/
 ├── feeds/               # Price feeds (Pyth, Jupiter, Drift)
 ├── engines/             # Calculation engines
 ├── execution/           # Transaction handling
-├── agent/               # Agentic logic
-└── position/            # Position tracking
+├── agent/               # Agentic logic + learning
+├── position/            # Position tracking
+└── agentic/             # Self-learning features (NEW!)
+    ├── performance_db.rs    # Trade outcome storage
+    ├── adaptive_sizing.rs   # Kelly criterion sizing
+    └── reversal_detector.rs # Funding reversal alerts
 ```
 
 ## Configuration
@@ -112,6 +155,16 @@ risk:
 execution:
   use_jito: true
   simulate_before_submit: true
+
+# NEW: Agentic features
+agentic:
+  enable_adaptive_sizing: true
+  enable_reversal_detection: true
+  enable_performance_tracking: true
+  min_trades_for_adaptation: 10
+  max_kelly_fraction: 0.25
+  use_half_kelly: true
+  force_close_on_critical_reversal: true
 ```
 
 See [config.yaml](config.yaml) for full configuration options.
@@ -124,6 +177,7 @@ Idle → Opening → Monitoring → Closing → Idle
                 Rebalancing
                      ↓
        Paused ←←←←←←←
+       (Risk/Reversal)
 ```
 
 ## Risk Controls
@@ -136,6 +190,27 @@ Idle → Opening → Monitoring → Closing → Idle
 | Daily Loss | P&L < -$500 | Pause |
 | Error Rate | > 10 errors/hour | Pause |
 | RPC Disconnect | Connection lost | Pause |
+| **Funding Reversal** | Critical severity | Auto-close |
+
+## Adaptive Sizing Example
+
+```
+After 20 trades:
+├── Win Rate: 65%
+├── Avg Win: $150
+├── Avg Loss: $80
+├── W/L Ratio: 1.875
+├── Kelly %: 30%
+├── Half-Kelly: 15%
+└── Adjusted (streak): 12%
+
+Position sizing:
+├── Max allowed: 1000 SOL
+├── Base size: 200 SOL (20% of max)
+├── Kelly adjusted: 180 SOL (× 0.9)
+├── Losing streak (-3): 126 SOL (× 0.7)
+└── Final size: 126 SOL
+```
 
 ## Monitoring
 
@@ -148,6 +223,8 @@ Prometheus metrics on port 9090:
 - `sol_basis_bot_realized_pnl`
 - `sol_basis_bot_trades_total`
 - `sol_basis_bot_agent_state`
+- `sol_basis_bot_win_rate` (NEW)
+- `sol_basis_bot_kelly_fraction` (NEW)
 
 Import [Grafana dashboard](monitoring/grafana-dashboard.json) for visualization.
 
@@ -155,16 +232,26 @@ Import [Grafana dashboard](monitoring/grafana-dashboard.json) for visualization.
 
 ```
 INFO  ===========================================
-INFO    SOL Basis Trading Bot - FULLY OPERATIONAL
+INFO    SOL Basis Trading Bot - AGENTIC MODE
 INFO  ===========================================
+INFO  Performance: 15 trades | 66.7% win rate | 1.82 profit factor
+INFO  Adaptive sizing: Kelly 18.2%, Adjustment 85%
+INFO  
 INFO  Status | Spot: $148.52 | Perp: $148.89 | Basis: 0.25% | Funding APR: 18.42%
-INFO  Trade signal: OpenBasis | Size: 85.20 SOL | Confidence: 80.0%
+INFO  Trade signal: OpenBasis | Confidence: 80.0%
+INFO  Adaptive sizing: 142.50 SOL (14.3% of max) | Kelly: 18.2% | Adjustments: ["Strong basis (0.25%): 2.5x multiplier"]
 INFO  State transition: Idle -> Opening
-INFO  Position opened: 85.20 SOL @ $148.52 (Long spot, Short perp)
+INFO  Position opened: 142.50 SOL @ $148.52 (Long spot, Short perp)
 INFO  State transition: Opening -> Monitoring
-INFO  Status | Pos: 85.20 SOL | uPnL: $42.15
+INFO  
+INFO  🚨 Funding reversal alert: MEDIUM | APR: 12.1% | Velocity: -0.0002/hr
+INFO  CAUTION: Monitor closely. Funding momentum shifting.
+INFO  
+INFO  Status | Pos: 142.50 SOL | uPnL: $42.15
 INFO  Basis converged to 0.05%, closing position
 INFO  Position closed with P&L: $156.42
+INFO  Trade recorded: $156.42 | ROI: 0.74% | Win: true
+INFO  Performance update: 16 trades | 68.8% win rate | $1,245.67 net P&L | 1.89 profit factor
 INFO  ===========================================
 INFO    Session Summary
 INFO    Trades: 2 | Realized P&L: $156.42
