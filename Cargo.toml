@@ -6,6 +6,17 @@ authors = ["bmwtx3"]
 description = "Ultra-low-latency agentic SOL basis trading bot"
 license = "MIT"
 repository = "https://github.com/bmwtx3/sol-basis-bot"
+readme = "README.md"
+keywords = ["solana", "trading", "defi", "basis", "perpetuals"]
+categories = ["finance", "cryptography::cryptocurrencies"]
+
+[lib]
+name = "sol_basis_bot"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sol-basis-bot"
+path = "src/main.rs"
 
 [dependencies]
 # Async Runtime
@@ -65,7 +76,14 @@ clap = { version = "4", features = ["derive"] }
 [dev-dependencies]
 tokio-test = "0.4"
 mockall = "0.12"
-criterion = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+fake = "2.9"
+
+[features]
+default = []
+paper-only = []  # Disable real execution
+devnet = []      # Use devnet endpoints
 
 [profile.release]
 opt-level = 3
@@ -78,6 +96,15 @@ strip = true
 opt-level = 0
 debug = true
 
+[profile.bench]
+opt-level = 3
+debug = false
+lto = "thin"
+
 [[bench]]
 name = "latency"
+harness = false
+
+[[bench]]
+name = "performance"
 harness = false
