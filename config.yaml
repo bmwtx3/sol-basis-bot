@@ -82,8 +82,52 @@ protocols:
     sol_mint: "So11111111111111111111111111111111111111112"
     usdc_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
-# Paper Trading Mode
-paper_trading: false
+# =====================================
+# AGENTIC FEATURES (Self-Learning)
+# =====================================
+agentic:
+  # Enable adaptive position sizing based on historical performance
+  # Uses Kelly criterion adjusted by win rate and profit factor
+  enable_adaptive_sizing: true
+  
+  # Enable funding reversal detection
+  # Early warning system for funding rate reversals
+  enable_reversal_detection: true
+  
+  # Enable performance tracking/learning
+  # Stores all trades in database for analysis
+  enable_performance_tracking: true
+  
+  # Path to performance database (JSON file)
+  performance_db_path: "data/performance.json"
+  
+  # Minimum number of trades before adaptive sizing starts
+  # Before this threshold, uses conservative 10% Kelly
+  min_trades_for_adaptation: 10
+  
+  # Maximum Kelly fraction (safety cap)
+  # Even with 100% win rate, never bet more than this
+  max_kelly_fraction: 0.25
+  
+  # Use half-Kelly for extra safety (recommended)
+  use_half_kelly: true
+  
+  # Minimum position size multiplier during drawdown
+  # Even during bad streaks, size won't go below this % of calculated
+  min_position_multiplier: 0.2
+  
+  # Cooldown between reversal alerts (seconds)
+  reversal_alert_cooldown_secs: 300
+  
+  # Force close position on critical funding reversal
+  force_close_on_critical_reversal: true
+  
+  # Auto-export trades to CSV (for analysis)
+  auto_export_trades: false
+  csv_export_path: "data/trades.csv"
+
+# Paper Trading Mode (RECOMMENDED FOR TESTING)
+paper_trading: true
 
 # Devnet Mode
 devnet: false
