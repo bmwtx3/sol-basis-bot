@@ -19,6 +19,8 @@ pub struct AppConfig {
     pub telemetry: TelemetryConfig,
     pub protocols: ProtocolsConfig,
     #[serde(default)]
+    pub agentic: AgenticConfig,
+    #[serde(default)]
     pub paper_trading: bool,
     #[serde(default)]
     pub devnet: bool,
@@ -57,6 +59,10 @@ impl AppConfig {
         anyhow::ensure!(
             self.risk.stop_loss_pct > 0.0 && self.risk.stop_loss_pct <= 50.0,
             "stop_loss_pct must be between 0 and 50"
+        );
+        anyhow::ensure!(
+            self.agentic.max_kelly_fraction > 0.0 && self.agentic.max_kelly_fraction <= 1.0,
+            "max_kelly_fraction must be between 0 and 1"
         );
         Ok(())
     }
@@ -137,6 +143,7 @@ impl AppConfig {
                     usdc_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v".to_string(),
                 },
             },
+            agentic: AgenticConfig::default(),
             paper_trading: true,
             devnet: false,
         }
@@ -289,4 +296,82 @@ pub struct JupiterConfig {
     pub api_url: String,
     pub sol_mint: String,
     pub usdc_mint: String,
+}
+
+/// Agentic features configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgenticConfig {
+    /// Enable adaptive position sizing based on performance
+    #[serde(default = "default_true")]
+    pub enable_adaptive_sizing: bool,
+    
+    /// Enable funding reversal detection
+    #[serde(default = "default_true")]
+    pub enable_reversal_detection: bool,
+    
+    /// Enable performance tracking/learning
+    #[serde(default = "default_true")]
+    pub enable_performance_tracking: bool,
+    
+    /// Path to performance database
+    #[serde(default = "default_performance_db_path")]
+    pub performance_db_path: String,
+    
+    /// Minimum trades before adaptive sizing kicks in
+    #[serde(default = "default_min_trades_for_adaptation")]
+    pub min_trades_for_adaptation: u32,
+    
+    /// Maximum Kelly fraction (safety cap)
+    #[serde(default = "default_max_kelly_fraction")]
+    pub max_kelly_fraction: f64,
+    
+    /// Use half-Kelly for safety
+    #[serde(default = "default_true")]
+    pub use_half_kelly: bool,
+    
+    /// Minimum position size multiplier (during drawdown)
+    #[serde(default = "default_min_position_multiplier")]
+    pub min_position_multiplier: f64,
+    
+    /// Alert cooldown for reversal detection (seconds)
+    #[serde(default = "default_reversal_alert_cooldown")]
+    pub reversal_alert_cooldown_secs: u64,
+    
+    /// Force close on critical reversal
+    #[serde(default = "default_true")]
+    pub force_close_on_critical_reversal: bool,
+    
+    /// Export trades to CSV periodically
+    #[serde(default)]
+    pub auto_export_trades: bool,
+    
+    /// CSV export path
+    #[serde(default = "default_csv_export_path")]
+    pub csv_export_path: String,
+}
+
+fn default_performance_db_path() -> String { "data/performance.json".to_string() }
+fn default_min_trades_for_adaptation() -> u32 { 10 }
+fn default_max_kelly_fraction() -> f64 { 0.25 }
+fn default_min_position_multiplier() -> f64 { 0.2 }
+fn default_reversal_alert_cooldown() -> u64 { 300 }
+fn default_csv_export_path() -> String { "data/trades.csv".to_string() }
+
+impl Default for AgenticConfig {
+    fn default() -> Self {
+        Self {
+            enable_adaptive_sizing: true,
+            enable_reversal_detection: true,
+            enable_performance_tracking: true,
+            performance_db_path: default_performance_db_path(),
+            min_trades_for_adaptation: default_min_trades_for_adaptation(),
+            max_kelly_fraction: default_max_kelly_fraction(),
+            use_half_kelly: true,
+            min_position_multiplier: default_min_position_multiplier(),
+            reversal_alert_cooldown_secs: default_reversal_alert_cooldown(),
+            force_close_on_critical_reversal: true,
+            auto_export_trades: false,
+            csv_export_path: default_csv_export_path(),
+        }
+    }
 }
