@@ -30,6 +30,7 @@ use state::SharedState;
 use telemetry::{init_logging, init_metrics};
 use network::{RpcManager, EventBus, Event};
 use feeds::PriceFeedManager;
+use engines::EngineManager;
 
 /// SOL Basis Trading Bot - Ultra-low-latency agentic trading
 #[derive(Parser, Debug)]
@@ -126,6 +127,18 @@ async fn main() -> Result<()> {
     price_feeds.start().await?;
     info!("Price feeds started");
     
+    // Phase 3: Initialize calculation engines
+    info!("Initializing calculation engines...");
+    let engine_manager = EngineManager::new(
+        config.clone(),
+        state.clone(),
+        event_tx.clone(),
+    );
+    
+    // Start engines
+    engine_manager.start().await?;
+    info!("Calculation engines started");
+    
     // Spawn event processor to update shared state
     let state_clone = state.clone();
     let mut event_rx = event_bus.subscribe();
@@ -150,6 +163,18 @@ async fn main() -> Result<()> {
                         Event::FundingRateUpdate { rate, .. } => {
                             state_clone.update_funding_rate(rate);
                             debug!("Funding rate updated: {:.6}%", rate * 100.0);
+                        }
+                        Event::BasisSpreadUpdate { spread, spot_price, perp_price, .. } => {
+                            debug!(
+                                "Basis update: spread={:.4}%, spot=${:.2}, perp=${:.2}",
+                                spread, spot_price, perp_price
+                            );
+                        }
+                        Event::TradeSignal { signal_type, size, reason } => {
+                            info!(
+                                "Trade signal: {} | Size: {:.2} SOL | Reason: {}",
+                                signal_type, size, reason
+                            );
                         }
                         Event::WebSocketConnected => {
                             *state_clone.ws_connected.write() = true;
@@ -201,9 +226,8 @@ async fn main() -> Result<()> {
     });
 
     info!("Bot initialization complete");
-    info!("Monitoring prices and basis spread...");
+    info!("Monitoring prices, analyzing funding rates, and generating signals...");
     
-    // TODO: Phase 3 - Initialize calculation engines
     // TODO: Phase 4 - Initialize execution engine
     // TODO: Phase 5 - Initialize agent
     
@@ -218,6 +242,9 @@ async fn main() -> Result<()> {
     }
     
     // Cleanup
+    info!("Stopping engines...");
+    engine_manager.stop().await;
+    
     info!("Stopping price feeds...");
     price_feeds.stop().await;
     
