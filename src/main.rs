@@ -11,7 +11,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::signal;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 
 mod config;
 mod state;
@@ -28,6 +28,8 @@ mod protocols;
 use config::AppConfig;
 use state::SharedState;
 use telemetry::{init_logging, init_metrics};
+use network::{RpcManager, EventBus, Event};
+use feeds::PriceFeedManager;
 
 /// SOL Basis Trading Bot - Ultra-low-latency agentic trading
 #[derive(Parser, Debug)]
@@ -89,12 +91,121 @@ async fn main() -> Result<()> {
     // Wrap config in Arc for sharing
     let config = Arc::new(config);
 
-    // TODO: Phase 2 - Initialize network layer
+    // Phase 2: Initialize network layer
+    info!("Initializing network layer...");
+    
+    // Create event bus for internal communication
+    let event_bus = EventBus::new(2048);
+    let event_tx = event_bus.sender();
+    info!("Event bus initialized");
+    
+    // Create RPC manager
+    let rpc_manager = Arc::new(RpcManager::new(&config.rpc)?);
+    info!("RPC manager initialized");
+    
+    // Test RPC connection
+    match rpc_manager.health_check().await {
+        Ok(latency) => {
+            info!("RPC health check passed (latency: {:?})", latency);
+            *state.rpc_connected.write() = true;
+        }
+        Err(e) => {
+            warn!("RPC health check failed: {}", e);
+        }
+    }
+    
+    // Initialize price feeds
+    info!("Initializing price feeds...");
+    let price_feeds = PriceFeedManager::new(
+        &config.protocols,
+        state.clone(),
+        event_tx.clone(),
+    );
+    
+    // Start price feeds
+    price_feeds.start().await?;
+    info!("Price feeds started");
+    
+    // Spawn event processor to update shared state
+    let state_clone = state.clone();
+    let mut event_rx = event_bus.subscribe();
+    let event_processor = tokio::spawn(async move {
+        info!("Event processor started");
+        loop {
+            match event_rx.recv().await {
+                Ok(event) => {
+                    match event {
+                        Event::SpotPriceUpdate(update) => {
+                            state_clone.update_spot_price(update.price);
+                            debug!("Spot price updated: ${:.4}", update.price);
+                        }
+                        Event::PerpMarkPriceUpdate(update) => {
+                            state_clone.update_perp_mark_price(update.price);
+                            debug!("Perp mark price updated: ${:.4}", update.price);
+                        }
+                        Event::PerpIndexPriceUpdate(update) => {
+                            state_clone.perp_index_price.store(update.price);
+                            debug!("Perp index price updated: ${:.4}", update.price);
+                        }
+                        Event::FundingRateUpdate { rate, .. } => {
+                            state_clone.update_funding_rate(rate);
+                            debug!("Funding rate updated: {:.6}%", rate * 100.0);
+                        }
+                        Event::WebSocketConnected => {
+                            *state_clone.ws_connected.write() = true;
+                            info!("WebSocket connected");
+                        }
+                        Event::WebSocketDisconnected => {
+                            *state_clone.ws_connected.write() = false;
+                            warn!("WebSocket disconnected");
+                        }
+                        Event::Error { source, message } => {
+                            error!("Error from {}: {}", source, message);
+                            state_clone.increment_error_count();
+                        }
+                        _ => {
+                            debug!("Unhandled event received");
+                        }
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    warn!("Event processor lagged by {} messages", n);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    info!("Event bus closed");
+                    break;
+                }
+            }
+        }
+    });
+    
+    // Spawn status reporter
+    let state_clone = state.clone();
+    let status_reporter = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            interval.tick().await;
+            
+            let spot = state_clone.spot_price.load();
+            let perp = state_clone.perp_mark_price.load();
+            let basis = state_clone.get_basis_spread();
+            let funding_apr = state_clone.funding_apr.load();
+            
+            if spot > 0.0 && perp > 0.0 {
+                info!(
+                    "Status | Spot: ${:.2} | Perp: ${:.2} | Basis: {:.4}% | Funding APR: {:.2}%",
+                    spot, perp, basis, funding_apr
+                );
+            }
+        }
+    });
+
+    info!("Bot initialization complete");
+    info!("Monitoring prices and basis spread...");
+    
     // TODO: Phase 3 - Initialize calculation engines
     // TODO: Phase 4 - Initialize execution engine
     // TODO: Phase 5 - Initialize agent
-
-    info!("Bot initialization complete - awaiting Phase 2 implementation");
     
     // Wait for shutdown signal
     match signal::ctrl_c().await {
@@ -105,6 +216,13 @@ async fn main() -> Result<()> {
             error!("Error listening for shutdown signal: {}", err);
         }
     }
+    
+    // Cleanup
+    info!("Stopping price feeds...");
+    price_feeds.stop().await;
+    
+    event_processor.abort();
+    status_reporter.abort();
 
     info!("SOL Basis Trading Bot stopped");
     Ok(())
