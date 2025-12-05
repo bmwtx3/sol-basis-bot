@@ -1,0 +1,82 @@
+[package]
+name = "sol-basis-bot"
+version = "0.1.0"
+edition = "2021"
+authors = ["bmwtx3"]
+description = "Ultra-low-latency agentic SOL basis trading bot"
+license = "MIT"
+repository = "https://github.com/bmwtx3/sol-basis-bot"
+
+[dependencies]
+# Async Runtime
+tokio = { version = "1.37", features = ["full", "tracing", "parking_lot"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Solana
+solana-sdk = "1.18"
+solana-client = "1.18"
+solana-rpc-client = "1.18"
+solana-rpc-client-api = "1.18"
+solana-account-decoder = "1.18"
+
+# WebSocket + Networking
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+url = "2"
+
+# Concurrency
+crossbeam = "0.8"
+crossbeam-channel = "0.5"
+dashmap = "5"
+arc-swap = "1"
+parking_lot = "0.12"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+borsh = "1"
+
+# Logging & Telemetry
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-appender = "0.2"
+metrics = "0.22"
+metrics-exporter-prometheus = "0.14"
+
+# Error Handling
+anyhow = "1"
+thiserror = "1"
+
+# Utils
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1", features = ["serde"] }
+rust_decimal_macros = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+base64 = "0.22"
+hex = "0.4"
+bs58 = "0.5"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.12"
+criterion = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[[bench]]
+name = "latency"
+harness = false
